@@ -1,4 +1,4 @@
-import { createDecoder } from './decoder.mjs';
+import { createDecoder } from './decoder.mjs?v=6';
 
 const minimumUnit = 100;
 const maximumUnit = 2000;
@@ -32,11 +32,13 @@ function estimate(runs, frameInterval) {
 export function createAutoDecoder(emit, showSymbols, onLock) {
   let history = [];
   let runs = [];
+  let unstable = [];
   let previous, frameInterval, level, edge, pending, decoder;
+  let invert = false;
 
   function sample(time, bright) {
     if (decoder) {
-      decoder.sample(time, bright);
+      decoder.sample(time, bright !== invert);
       return;
     }
     if (previous !== undefined) {
@@ -45,12 +47,15 @@ export function createAutoDecoder(emit, showSymbols, onLock) {
       if (interval > Math.max(250, (frameInterval ?? 33) * 4)) {
         runs = [];
         history = [];
+        unstable = [];
         level = edge = pending = undefined;
+        invert = false;
       } else {
         frameInterval = frameInterval === undefined ? interval : frameInterval * 0.9 + interval * 0.1;
       }
     }
     previous = time;
+    bright = bright !== invert;
     history.push({ time, bright });
     while (history[0].time < time - 45000) history.shift();
     if (level === undefined) {
@@ -58,6 +63,10 @@ export function createAutoDecoder(emit, showSymbols, onLock) {
       return;
     }
     if (bright === level) {
+      if (pending !== undefined) {
+        unstable = unstable.filter(at => at >= time - 5000);
+        unstable.push(pending);
+      }
       pending = undefined;
       return;
     }
@@ -67,18 +76,28 @@ export function createAutoDecoder(emit, showSymbols, onLock) {
     }
     const transition = pending;
     pending = undefined;
+    if (edge === undefined && level && transition - history[0].time >= 500) {
+      // A steady bright screen before transmission can use dark flashes as its pulses.
+      invert = !invert;
+      level = !level;
+      bright = !bright;
+      for (const reading of history) reading.bright = !reading.bright;
+    }
     if (edge !== undefined) runs.push({ bright: level, duration: transition - edge, time: transition });
     runs = runs.filter(run => run.time >= history[0].time).slice(-18);
     level = bright;
     edge = transition;
+    unstable = unstable.filter(at => at >= time - 5000);
+    // Frequent one-frame transitions suggest aliasing. The remaining longer pulses can fit a false speed.
+    if (unstable.length >= 2) return;
     const unit = estimate(runs, frameInterval ?? 33);
     if (unit === undefined) return;
     decoder = createDecoder(unit, emit, showSymbols);
-    onLock(unit);
+    onLock(unit, invert);
     for (const reading of history) decoder.sample(reading.time, reading.bright);
     history = [];
     runs = [];
   }
 
-  return { sample };
+  return { sample, get unstable() { return unstable.length >= 2; } };
 }

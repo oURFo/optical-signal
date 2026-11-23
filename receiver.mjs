@@ -1,4 +1,4 @@
-import { createAutoDecoder } from './morse-speed.mjs';
+import { createAutoDecoder } from './morse-speed.mjs?v=6';
 import { createLightDetector } from './light-detector.mjs';
 
 const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
@@ -18,7 +18,7 @@ export function setupReceiver({ begin, stop, isActive }) {
   canvas.width = canvas.height = 24;
   const context = canvas.getContext('2d', { willReadFrequently: true });
   const pointers = new Map();
-  let roi, anchor, pinch, zooming, session, sampleId, detector;
+  let roi, anchor, pinch, zooming, session, sampleId, detector, timing;
   let side = 0.2;
   let detectedUnit;
   let lastFrame, frameInterval, lastReport, lastVideoTime;
@@ -49,7 +49,7 @@ export function setupReceiver({ begin, stop, isActive }) {
   }
 
   function clearDecoder() {
-    detector = undefined;
+    detector = timing = undefined;
     detectedUnit = undefined;
     symbols.textContent = '';
   }
@@ -124,28 +124,46 @@ export function setupReceiver({ begin, stop, isActive }) {
     context.drawImage(video, roi.x * width, roi.y * height, roi.w * width, roi.h * height, 0, 0, 24, 24);
     const { data } = context.getImageData(0, 0, 24, 24);
     const luminance = [];
+    let sum = 0;
     for (let i = 0; i < data.length; i += 4) {
-      luminance.push(0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2]);
+      const value = 0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2];
+      luminance.push(value);
+      sum += value;
     }
     luminance.sort((a, b) => a - b);
     const upper = luminance.slice(-9, -1);
-    return upper.reduce((sum, value) => sum + value, 0) / upper.length;
+    return [sum / luminance.length, upper.reduce((sum, value) => sum + value, 0) / upper.length];
   }
 
   function startDecoding() {
     clearDecoder();
     signal.textContent = '';
-    const decoder = createAutoDecoder(text => {
+    timing = createAutoDecoder(text => {
       if (text !== ' ' || (result.textContent && !result.textContent.endsWith(' '))) {
         result.append(document.createTextNode(text));
         result.hidden = false;
       }
       result.scrollTop = result.scrollHeight;
-    }, code => { symbols.textContent = code ? `點劃 ${code}` : ''; }, unit => {
+    }, code => { symbols.textContent = code ? `點劃 ${code}` : ''; }, (unit, inverted) => {
       detectedUnit = unit;
-      status.textContent = `已辨識速度：約 ${unit} ms／單位，正在解析。`;
+      status.textContent = `已辨識速度：約 ${unit} ms／單位${inverted ? '，暗色為訊號' : ''}，正在解析。`;
     });
-    detector = createLightDetector(2000, decoder.sample);
+    let selected;
+    const channels = [0, 1].map(index => createLightDetector(2000, (time, bright) => {
+      selected ??= index;
+      if (selected === index) timing.sample(time, bright);
+    }));
+    detector = {
+      sample(time, values) {
+        if (selected === undefined) {
+          channels[0].sample(time, values[0]);
+          if (selected === undefined) channels[1].sample(time, values[1]);
+        } else channels[selected].sample(time, values[selected]);
+        return values[selected ?? 0];
+      },
+      get contrast() { return channels[selected]?.contrast; },
+      get bright() { return channels[selected]?.bright; }
+    };
     status.textContent = '正在自動偵測閃光。';
   }
 
@@ -162,16 +180,16 @@ export function setupReceiver({ begin, stop, isActive }) {
     }
     lastFrame = time;
     if (!detector) return;
-    const value = readBrightness();
     const acquired = detector.contrast !== undefined;
-    detector.sample(time, value);
+    const value = detector.sample(time, readBrightness());
     if (!acquired && detector.contrast !== undefined && detectedUnit === undefined) {
       status.textContent = '已偵測到閃光，正在判斷速度，請等待更多訊號。';
     }
     if (lastReport === undefined || time - lastReport >= 200) {
       const fps = frameInterval ? Math.round(1000 / frameInterval) : 0;
       const contrast = detector?.contrast === undefined ? '' : ` · ${detector.bright ? '亮' : '滅'} · 亮暗差 ${Math.round(detector.contrast)}`;
-      const slow = detectedUnit && frameInterval * 4 > detectedUnit ? ' · 短閃光可能因影格率偏低而漏判' : '';
+      const slow = detectedUnit && frameInterval * 4 > detectedUnit ? ' · 短閃光可能因影格率偏低而漏判'
+        : timing.unstable ? ' · 偵測到短暫跳動，請降低播放速度或避開反光' : '';
       signal.textContent = `框內亮度 ${Math.round(value)}／255 · ${fps} fps${contrast}${slow}`;
       lastReport = time;
     }

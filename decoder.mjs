@@ -12,10 +12,13 @@ export function createDecoder(unit, emit, showSymbols) {
   let synchronized = false;
   let idle = 0;
   let wordPending = false;
+  let initialDarkFrames = 0;
+  let firstEdge = true;
 
   function reset() {
     previous = edge = candidate = undefined;
     level = synchronized = wordPending = false;
+    firstEdge = false;
     symbols = '';
     idle = 0;
     showSymbols('');
@@ -44,6 +47,7 @@ export function createDecoder(unit, emit, showSymbols) {
       candidate = undefined;
       if (!level) {
         edge ??= time;
+        if (firstEdge) initialDarkFrames++;
         if (synchronized) settleDark(time);
       }
       return;
@@ -56,7 +60,8 @@ export function createDecoder(unit, emit, showSymbols) {
     candidate = undefined;
     if (bright) {
       if (synchronized) settleDark(transition);
-      else if (edge !== undefined && transition - edge >= unit * 2.2) synchronized = true;
+      else if (edge !== undefined && (transition - edge >= unit * 2.2
+          || (firstEdge && initialDarkFrames >= 2))) synchronized = true;
       if (wordPending) emit(' ');
       wordPending = false;
       idle = 0;
@@ -68,6 +73,7 @@ export function createDecoder(unit, emit, showSymbols) {
         showSymbols(symbols);
       }
     }
+    firstEdge = false;
     level = bright;
     edge = transition;
   }
