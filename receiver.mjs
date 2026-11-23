@@ -1,4 +1,4 @@
-import { createDecoder } from './decoder.mjs';
+import { createAutoDecoder } from './morse-speed.mjs';
 import { createLightDetector } from './light-detector.mjs';
 
 const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
@@ -14,7 +14,6 @@ export function setupReceiver({ begin, stop, isActive }) {
   const size = $('roi-size');
   const lock = $('roi-lock');
   const start = $('receive-run');
-  const speed = $('receive-unit');
   const signal = $('receive-signal');
   const symbols = $('receive-symbols');
   const result = $('receive-text');
@@ -23,6 +22,7 @@ export function setupReceiver({ begin, stop, isActive }) {
   const context = canvas.getContext('2d', { willReadFrequently: true });
   let roi = { x: 0.4, y: 0.4, w: 0.2, h: 0.2 };
   let drag, session, sampleId, decoder, detector;
+  let detectedUnit;
   let locked = false;
   let lastFrame, frameInterval, lastReport, lastVideoTime;
   const nativeFrames = typeof video.requestVideoFrameCallback === 'function';
@@ -39,13 +39,12 @@ export function setupReceiver({ begin, stop, isActive }) {
     lock.textContent = locked ? '解除鎖定' : '鎖定範圍';
     start.disabled = !locked;
     start.textContent = decoder ? '暫停解析' : '開始解析';
-    speed.disabled = !!decoder;
   }
 
   function clearDecoder() {
-    decoder?.reset();
     decoder = undefined;
     detector = undefined;
+    detectedUnit = undefined;
     symbols.textContent = '';
   }
 
@@ -122,28 +121,33 @@ export function setupReceiver({ begin, stop, isActive }) {
     return upper.reduce((sum, value) => sum + value, 0) / upper.length;
   }
 
+  function startDecoding() {
+    decoder = createAutoDecoder(text => {
+      if (text !== ' ' || (result.value && !result.value.endsWith(' '))) result.value += text;
+      result.scrollTop = result.scrollHeight;
+    }, code => { symbols.textContent = code ? `點劃 ${code}` : ''; }, unit => {
+      detectedUnit = unit;
+      status.textContent = `已辨識速度：約 ${unit} ms／單位，正在解析。`;
+    });
+    detector = createLightDetector(2000, decoder.sample);
+    status.textContent = '正在自動偵測閃光。';
+  }
+
   start.onclick = () => {
     if (decoder) {
       clearDecoder();
       status.textContent = '已暫停解析。';
     } else {
-      const unit = Number(speed.value);
-      if (!speed.value || unit < 150 || unit > 2000) {
-        status.textContent = '請輸入 150～2000 ms 的時間單位。';
-        return;
-      }
-      decoder = createDecoder(unit, text => {
-        if (text !== ' ' || (result.value && !result.value.endsWith(' '))) result.value += text;
-        result.scrollTop = result.scrollHeight;
-      }, code => { symbols.textContent = code ? `點劃 ${code}` : ''; });
-      detector = createLightDetector(unit, decoder.sample);
-      status.textContent = '正在自動偵測閃光。若尚未發送，請稍候片刻再發送。';
+      startDecoding();
     }
     update();
   };
   $('receive-clear').onclick = () => {
     result.value = '';
-    decoder?.reset();
+    if (decoder) {
+      clearDecoder();
+      startDecoding();
+    }
   };
 
   function inspectFrame(time) {
@@ -157,14 +161,14 @@ export function setupReceiver({ begin, stop, isActive }) {
     if (detector) {
       const acquired = detector.contrast !== undefined;
       detector.sample(time, value);
-      if (!acquired && detector.contrast !== undefined) {
-        status.textContent = '已偵測到閃光，正在解析摩斯碼。';
+      if (!acquired && detector.contrast !== undefined && detectedUnit === undefined) {
+        status.textContent = '已偵測到閃光，正在判斷速度，請等待更多訊號。';
       }
     }
     if (lastReport === undefined || time - lastReport >= 200) {
       const fps = frameInterval ? Math.round(1000 / frameInterval) : 0;
       const contrast = detector?.contrast === undefined ? '' : ` · ${detector.bright ? '亮' : '滅'} · 亮暗差 ${Math.round(detector.contrast)}`;
-      const slow = frameInterval * 4 > Number(speed.value) ? ' · 取樣偏慢，請增加收發兩端的時間單位' : '';
+      const slow = detectedUnit && frameInterval * 4 > detectedUnit ? ' · 短閃光可能因影格率偏低而漏判' : '';
       signal.textContent = `框內亮度 ${Math.round(value)}／255 · ${fps} fps${contrast}${slow}`;
       lastReport = time;
     }
