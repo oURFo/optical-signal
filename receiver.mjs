@@ -1,4 +1,5 @@
 import { createDecoder } from './decoder.mjs';
+import { createLightDetector } from './light-detector.mjs';
 
 const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
 
@@ -12,9 +13,6 @@ export function setupReceiver({ begin, stop, isActive }) {
   const frame = $('camera-roi');
   const size = $('roi-size');
   const lock = $('roi-lock');
-  const flashButton = $('flash-calibrate');
-  const darkButton = $('dark-calibrate');
-  const lightButton = $('light-calibrate');
   const start = $('receive-run');
   const speed = $('receive-unit');
   const signal = $('receive-signal');
@@ -24,10 +22,8 @@ export function setupReceiver({ begin, stop, isActive }) {
   canvas.width = canvas.height = 24;
   const context = canvas.getContext('2d', { willReadFrequently: true });
   let roi = { x: 0.4, y: 0.4, w: 0.2, h: 0.2 };
-  let drag, session, sampleId, decoder, calibration;
+  let drag, session, sampleId, decoder, detector;
   let locked = false;
-  let bright = false;
-  let dark, light;
   let lastFrame, frameInterval, lastReport, lastVideoTime;
   const nativeFrames = typeof video.requestVideoFrameCallback === 'function';
 
@@ -41,10 +37,7 @@ export function setupReceiver({ begin, stop, isActive }) {
     frame.classList.toggle('locked', locked);
     size.disabled = locked;
     lock.textContent = locked ? '解除鎖定' : '鎖定範圍';
-    darkButton.disabled = !locked || !!decoder || !!calibration;
-    flashButton.disabled = darkButton.disabled;
-    lightButton.disabled = darkButton.disabled || dark === undefined;
-    start.disabled = !locked || !!calibration || !(light - dark >= 8);
+    start.disabled = !locked;
     start.textContent = decoder ? '暫停解析' : '開始解析';
     speed.disabled = !!decoder;
   }
@@ -52,13 +45,12 @@ export function setupReceiver({ begin, stop, isActive }) {
   function clearDecoder() {
     decoder?.reset();
     decoder = undefined;
-    bright = false;
+    detector = undefined;
     symbols.textContent = '';
   }
 
   function unlock() {
     locked = false;
-    dark = light = calibration = undefined;
     clearDecoder();
     update();
   }
@@ -112,24 +104,9 @@ export function setupReceiver({ begin, stop, isActive }) {
       locked = true;
       drag = undefined;
       update();
-      status.textContent = '範圍已鎖定。請選擇閃爍取樣或分別校準亮滅。';
+      status.textContent = '範圍已鎖定。按開始解析即可自動偵測閃光。';
     }
   };
-
-  function calibrate(target) {
-    calibration = { target, readings: [] };
-    if (target !== 'light') dark = light = undefined;
-    else light = undefined;
-    status.textContent = {
-      flash: '量測中，請讓光源持續閃爍並維持對準。',
-      dark: '量測中，請保持熄燈。',
-      light: '量測中，請保持亮燈。'
-    }[target];
-    update();
-  }
-  darkButton.onclick = () => calibrate('dark');
-  lightButton.onclick = () => calibrate('light');
-  flashButton.onclick = () => calibrate('flash');
 
   function readBrightness() {
     const width = video.videoWidth;
@@ -141,32 +118,8 @@ export function setupReceiver({ begin, stop, isActive }) {
       luminance.push(0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2]);
     }
     luminance.sort((a, b) => a - b);
-    const upper = luminance.slice(-29, -1);
+    const upper = luminance.slice(-9, -1);
     return upper.reduce((sum, value) => sum + value, 0) / upper.length;
-  }
-
-  function finishCalibration(value, time) {
-    calibration.since ??= time;
-    calibration.readings.push(value);
-    const duration = calibration.target === 'flash' ? Math.max(4000, (Number(speed.value) || 200) * 10) : 400;
-    if (time - calibration.since < duration || calibration.readings.length < 5) return;
-    const { target, readings } = calibration;
-    calibration = undefined;
-    readings.sort((a, b) => a - b);
-    const median = readings[Math.floor(readings.length / 2)];
-    if (target === 'dark') {
-      dark = median;
-      status.textContent = '熄燈校準完成。請讓光源持續亮起後校準亮燈。';
-    } else {
-      if (target === 'flash') {
-        dark = readings[Math.floor((readings.length - 1) * 0.15)];
-        light = readings[Math.ceil((readings.length - 1) * 0.85)];
-      } else light = median;
-      status.textContent = light - dark >= 8
-        ? '校準完成。開始解析後會從下一段完整訊號讀取。'
-        : '亮暗差不足。請縮小範圍、重新對準或重新校準。';
-    }
-    update();
   }
 
   start.onclick = () => {
@@ -183,14 +136,14 @@ export function setupReceiver({ begin, stop, isActive }) {
         if (text !== ' ' || (result.value && !result.value.endsWith(' '))) result.value += text;
         result.scrollTop = result.scrollHeight;
       }, code => { symbols.textContent = code ? `點劃 ${code}` : ''; });
-      status.textContent = '解析中，請保持光源在選取框內。';
+      detector = createLightDetector(unit, decoder.sample);
+      status.textContent = '正在自動偵測閃光。若尚未發送，請稍候片刻再發送。';
     }
     update();
   };
   $('receive-clear').onclick = () => {
     result.value = '';
     decoder?.reset();
-    bright = false;
   };
 
   function inspectFrame(time) {
@@ -201,15 +154,16 @@ export function setupReceiver({ begin, stop, isActive }) {
     lastFrame = time;
     if (!locked) return;
     const value = readBrightness();
-    if (calibration) finishCalibration(value, time);
-    if (decoder) {
-      const contrast = light - dark;
-      bright = value >= dark + contrast * (bright ? 0.35 : 0.65);
-      decoder.sample(time, bright);
+    if (detector) {
+      const acquired = detector.contrast !== undefined;
+      detector.sample(time, value);
+      if (!acquired && detector.contrast !== undefined) {
+        status.textContent = '已偵測到閃光，正在解析摩斯碼。';
+      }
     }
     if (lastReport === undefined || time - lastReport >= 200) {
       const fps = frameInterval ? Math.round(1000 / frameInterval) : 0;
-      const contrast = light === undefined ? '' : ` · 校準亮暗差 ${Math.round(light - dark)}`;
+      const contrast = detector?.contrast === undefined ? '' : ` · ${detector.bright ? '亮' : '滅'} · 亮暗差 ${Math.round(detector.contrast)}`;
       const slow = frameInterval * 4 > Number(speed.value) ? ' · 取樣偏慢，請增加收發兩端的時間單位' : '';
       signal.textContent = `框內亮度 ${Math.round(value)}／255 · ${fps} fps${contrast}${slow}`;
       lastReport = time;

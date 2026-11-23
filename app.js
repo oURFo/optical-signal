@@ -1,5 +1,5 @@
 import { cleanMessage, encode, schedule } from './morse.mjs';
-import { setupReceiver } from './receiver.mjs';
+import { setupReceiver } from './receiver.mjs?v=3';
 
 const $ = id => document.getElementById(id);
 const panel = $('panel');

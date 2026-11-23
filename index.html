@@ -8,8 +8,8 @@
   <link rel="manifest" href="./manifest.json">
   <link rel="icon" href="./icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="./icon-192.png">
-  <link rel="stylesheet" href="./style.css?v=2">
-  <script type="module" src="./app.js?v=2"></script>
+  <link rel="stylesheet" href="./style.css?v=3">
+  <script type="module" src="./app.js?v=3"></script>
 </head>
 <body>
   <main id="panel">
@@ -67,7 +67,7 @@
       </section>
       <section class="morse" aria-labelledby="receive-title">
         <h2 id="receive-title">接收光學摩斯碼</h2>
-        <p class="hint">開啟後鏡頭，框住光源並鎖定。光源已在閃爍時可直接取樣校準，也可分別校準亮燈和熄燈。</p>
+        <p class="hint">開啟後鏡頭，框住光源並鎖定。按下開始解析後，系統會自動辨識框內光源的亮滅。</p>
         <button id="receive-open" class="primary">開啟接收鏡頭</button>
         <p id="receive-status" class="hint" role="status">鏡頭未開啟</p>
         <div id="receive-controls" hidden>
@@ -79,11 +79,6 @@
           <input id="roi-size" type="range" min="4" max="70" value="20">
           <button id="roi-lock">鎖定範圍</button>
           <p class="hint">可在預覽上拖曳畫新框，或拖動框內移動位置。</p>
-          <div class="receive-actions">
-            <button id="flash-calibrate" disabled>取樣閃爍校準</button>
-            <button id="dark-calibrate" disabled>校準熄燈</button>
-            <button id="light-calibrate" disabled>校準亮燈</button>
-          </div>
           <p id="receive-signal" class="hint"></p>
           <label for="receive-unit">發送端時間單位（ms）</label>
           <input id="receive-unit" type="number" min="150" max="2000" step="10" value="200">

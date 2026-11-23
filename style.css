@@ -50,7 +50,6 @@ footer { margin-top: 14px; }
 #camera-preview { display: block; width: 100%; pointer-events: none; }
 #camera-roi { position: absolute; border: 2px dashed #ffc460; pointer-events: none; box-shadow: 0 0 0 1px #000; }
 #camera-roi.locked { border-style: solid; border-color: #8cffae; }
-.receive-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 #receive-unit, #receive-text {
   display: block; width: 100%; margin-bottom: 8px; padding: 8px;
   font: inherit; color: inherit; background: #101216; border: 1px solid #525b6a; border-radius: 8px;
