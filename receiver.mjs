@@ -11,19 +11,16 @@ export function setupReceiver({ begin, stop, isActive }) {
   const video = $('camera-preview');
   const view = $('camera-view');
   const frame = $('camera-roi');
-  const size = $('roi-size');
-  const lock = $('roi-lock');
-  const start = $('receive-run');
   const signal = $('receive-signal');
   const symbols = $('receive-symbols');
   const result = $('receive-text');
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = 24;
   const context = canvas.getContext('2d', { willReadFrequently: true });
-  let roi = { x: 0.4, y: 0.4, w: 0.2, h: 0.2 };
-  let drag, session, sampleId, decoder, detector;
+  const pointers = new Map();
+  let roi, anchor, pinch, zooming, session, sampleId, detector;
+  let side = 0.2;
   let detectedUnit;
-  let locked = false;
   let lastFrame, frameInterval, lastReport, lastVideoTime;
   const nativeFrames = typeof video.requestVideoFrameCallback === 'function';
 
@@ -31,81 +28,95 @@ export function setupReceiver({ begin, stop, isActive }) {
     for (const [property, value] of Object.entries({ left: roi.x, top: roi.y, width: roi.w, height: roi.h })) {
       frame.style[property] = `${value * 100}%`;
     }
+    frame.hidden = false;
+    const below = 1 - roi.y - roi.h;
+    const above = roi.y >= below;
+    result.style.top = above ? 'auto' : `calc(${(roi.y + roi.h) * 100}% + 4px)`;
+    result.style.bottom = above ? `calc(${(1 - roi.y) * 100}% + 4px)` : 'auto';
+    result.style.maxHeight = `calc(${(above ? roi.y : below) * 100}% - 8px)`;
+    result.hidden = !result.textContent;
+    result.scrollTop = result.scrollHeight;
   }
 
-  function update() {
-    frame.classList.toggle('locked', locked);
-    size.disabled = locked;
-    lock.textContent = locked ? '解除鎖定' : '鎖定範圍';
-    start.disabled = !locked;
-    start.textContent = decoder ? '暫停解析' : '開始解析';
+  function placeBox(point) {
+    anchor = point;
+    roi = {
+      x: clamp(anchor.x - side / 2, 0, 1 - side),
+      y: clamp(anchor.y - side / 2, 0, 1 - side),
+      w: side, h: side
+    };
+    drawBox();
   }
 
   function clearDecoder() {
-    decoder = undefined;
     detector = undefined;
     detectedUnit = undefined;
     symbols.textContent = '';
   }
 
-  function unlock() {
-    locked = false;
-    clearDecoder();
-    update();
-  }
-
-  const point = event => {
+  function pin(event) {
     const bounds = view.getBoundingClientRect();
-    return {
+    placeBox({
       x: clamp((event.clientX - bounds.left) / bounds.width, 0, 1),
       y: clamp((event.clientY - bounds.top) / bounds.height, 0, 1)
-    };
-  };
+    });
+    startDecoding();
+  }
+
+  function distance() {
+    const [a, b] = pointers.values();
+    return Math.hypot(a.x - b.x, a.y - b.y);
+  }
+
   view.addEventListener('pointerdown', event => {
-    if (locked || drag || event.button !== 0) return;
-    const origin = point(event);
-    const move = origin.x >= roi.x && origin.x <= roi.x + roi.w && origin.y >= roi.y && origin.y <= roi.y + roi.h;
-    drag = { id: event.pointerId, origin, box: { ...roi }, move };
+    if (!video.videoWidth || event.button !== 0 || pointers.size >= 2) return;
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY, moved: false });
     view.setPointerCapture(event.pointerId);
+    if (pointers.size === 2) {
+      zooming = true;
+      if (roi) {
+        pinch = { distance: Math.max(1, distance()), side };
+        clearDecoder();
+        status.textContent = '調整選取框，放開後會繼續解析。';
+      }
+    }
   });
   view.addEventListener('pointermove', event => {
-    if (drag?.id !== event.pointerId || locked) return;
-    const to = point(event);
-    const { origin, box, move } = drag;
-    if (move) {
-      roi.x = clamp(box.x + to.x - origin.x, 0, 1 - roi.w);
-      roi.y = clamp(box.y + to.y - origin.y, 0, 1 - roi.h);
-    } else {
-      const w = clamp(Math.abs(to.x - origin.x), 0.04, 1);
-      const h = clamp(Math.abs(to.y - origin.y), 0.04, 1);
-      roi = { x: clamp(Math.min(to.x, origin.x), 0, 1 - w), y: clamp(Math.min(to.y, origin.y), 0, 1 - h), w, h };
+    const pointer = pointers.get(event.pointerId);
+    if (!pointer) return;
+    if (pinch && pointers.size === 2) {
+      pointer.x = event.clientX;
+      pointer.y = event.clientY;
+      side = clamp(pinch.side * distance() / pinch.distance, 0.04, 0.7);
+      placeBox(anchor);
+    } else if (Math.hypot(event.clientX - pointer.x, event.clientY - pointer.y) > 12) {
+      pointer.moved = true;
     }
-    drawBox();
-    size.value = Math.round(clamp(Math.max(roi.w, roi.h) * 100, 4, 70));
   });
   for (const event of ['lostpointercapture', 'pointercancel', 'pointerup']) {
-    view.addEventListener(event, ({ pointerId }) => { if (drag?.id === pointerId) drag = undefined; });
+    view.addEventListener(event, interaction => {
+      const pointer = pointers.get(interaction.pointerId);
+      if (!pointer) return;
+      pointers.delete(interaction.pointerId);
+      if (pointers.size) return;
+      if (zooming) {
+        if (pinch) startDecoding();
+      } else if (event === 'pointerup' && !pointer.moved
+          && Math.hypot(interaction.clientX - pointer.x, interaction.clientY - pointer.y) <= 12) {
+        pin(interaction);
+      }
+      pinch = zooming = undefined;
+    });
   }
-  size.oninput = () => {
-    const side = Number(size.value) / 100;
-    roi = {
-      x: clamp(roi.x + (roi.w - side) / 2, 0, 1 - side),
-      y: clamp(roi.y + (roi.h - side) / 2, 0, 1 - side), w: side, h: side
-    };
-    drawBox();
-  };
-
-  lock.onclick = () => {
-    if (locked) {
-      unlock();
-      status.textContent = '移動或縮放選取框，再鎖定範圍。';
-    } else {
-      locked = true;
-      drag = undefined;
-      update();
-      status.textContent = '範圍已鎖定。按開始解析即可自動偵測閃光。';
-    }
-  };
+  view.addEventListener('keydown', event => {
+    const moves = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+    const move = moves[event.key];
+    if (!video.videoWidth || pointers.size || (!move && event.key !== 'Enter')) return;
+    event.preventDefault();
+    const { x, y } = anchor ?? { x: 0.5, y: 0.5 };
+    placeBox(move ? { x: clamp(x + move[0] * 0.04, 0, 1), y: clamp(y + move[1] * 0.04, 0, 1) } : { x, y });
+    startDecoding();
+  });
 
   function readBrightness() {
     const width = video.videoWidth;
@@ -122,8 +133,13 @@ export function setupReceiver({ begin, stop, isActive }) {
   }
 
   function startDecoding() {
-    decoder = createAutoDecoder(text => {
-      if (text !== ' ' || (result.value && !result.value.endsWith(' '))) result.value += text;
+    clearDecoder();
+    signal.textContent = '';
+    const decoder = createAutoDecoder(text => {
+      if (text !== ' ' || (result.textContent && !result.textContent.endsWith(' '))) {
+        result.append(document.createTextNode(text));
+        result.hidden = false;
+      }
       result.scrollTop = result.scrollHeight;
     }, code => { symbols.textContent = code ? `點劃 ${code}` : ''; }, unit => {
       detectedUnit = unit;
@@ -133,21 +149,10 @@ export function setupReceiver({ begin, stop, isActive }) {
     status.textContent = '正在自動偵測閃光。';
   }
 
-  start.onclick = () => {
-    if (decoder) {
-      clearDecoder();
-      status.textContent = '已暫停解析。';
-    } else {
-      startDecoding();
-    }
-    update();
-  };
   $('receive-clear').onclick = () => {
-    result.value = '';
-    if (decoder) {
-      clearDecoder();
-      startDecoding();
-    }
+    result.textContent = '';
+    result.hidden = true;
+    if (detector) startDecoding();
   };
 
   function inspectFrame(time) {
@@ -156,14 +161,12 @@ export function setupReceiver({ begin, stop, isActive }) {
       frameInterval = frameInterval ? frameInterval * 0.85 + elapsed * 0.15 : elapsed;
     }
     lastFrame = time;
-    if (!locked) return;
+    if (!detector) return;
     const value = readBrightness();
-    if (detector) {
-      const acquired = detector.contrast !== undefined;
-      detector.sample(time, value);
-      if (!acquired && detector.contrast !== undefined && detectedUnit === undefined) {
-        status.textContent = '已偵測到閃光，正在判斷速度，請等待更多訊號。';
-      }
+    const acquired = detector.contrast !== undefined;
+    detector.sample(time, value);
+    if (!acquired && detector.contrast !== undefined && detectedUnit === undefined) {
+      status.textContent = '已偵測到閃光，正在判斷速度，請等待更多訊號。';
     }
     if (lastReport === undefined || time - lastReport >= 200) {
       const fps = frameInterval ? Math.round(1000 / frameInterval) : 0;
@@ -204,13 +207,15 @@ export function setupReceiver({ begin, stop, isActive }) {
         if (nativeFrames) video.cancelVideoFrameCallback(sampleId);
         else cancelAnimationFrame(sampleId);
       }
-      sampleId = session = drag = lastFrame = frameInterval = lastReport = lastVideoTime = undefined;
+      sampleId = session = roi = anchor = pinch = zooming = lastFrame = frameInterval = lastReport = lastVideoTime = undefined;
+      pointers.clear();
       video.srcObject = null;
       panel.hidden = true;
       open.textContent = '開啟接收鏡頭';
       status.textContent = '鏡頭未開啟';
       signal.textContent = '';
-      unlock();
+      frame.hidden = result.hidden = true;
+      clearDecoder();
     }, { once: true });
     try {
       if (!navigator.mediaDevices?.getUserMedia) throw new Error('請使用手機瀏覽器開啟 HTTPS 網址。');
@@ -228,8 +233,7 @@ export function setupReceiver({ begin, stop, isActive }) {
       await video.play();
       if (!isActive(run)) return;
       $('status').textContent = '接收鏡頭運作中';
-      status.textContent = '將選取框對準光源，再鎖定。';
-      drawBox();
+      status.textContent = '點一下預覽中的光源即可開始解析。';
       nextFrame(run);
     } catch (error) {
       if (!isActive(run)) return;

@@ -48,11 +48,11 @@ footer { margin-top: 14px; }
   border-radius: 8px; touch-action: none; user-select: none;
 }
 #camera-preview { display: block; width: 100%; pointer-events: none; }
-#camera-roi { position: absolute; border: 2px dashed #ffc460; pointer-events: none; box-shadow: 0 0 0 1px #000; }
-#camera-roi.locked { border-style: solid; border-color: #8cffae; }
+#camera-roi { position: absolute; border: 2px solid #8cffae; pointer-events: none; box-shadow: 0 0 0 1px #000; }
 #receive-text {
-  display: block; width: 100%; margin-bottom: 8px; padding: 8px;
-  font: inherit; color: inherit; background: #101216; border: 1px solid #525b6a; border-radius: 8px;
+  position: absolute; left: 8px; right: 8px; overflow: hidden; padding: 3px 8px;
+  background: #101216e8; border-radius: 6px; pointer-events: none;
+  font-weight: 750; overflow-wrap: anywhere; white-space: pre-wrap;
 }
 .stop-bar { position: fixed; inset: auto 0 0; background: #101216; padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid #343943; }
 .stop { display: block; width: 100%; max-width: 828px; margin: auto; min-height: 54px; }
