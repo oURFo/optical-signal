@@ -42,6 +42,19 @@ input[type=color] { display: block; width: 100%; height: 44px; padding: 3px; bac
 #preview span { padding: 2px 5px; font-family: monospace; }
 #preview .active { background: #ffc460; color: #221708; border-radius: 4px; }
 footer { margin-top: 14px; }
+#receive-status, #receive-signal, #receive-symbols { margin: 10px 0; }
+#camera-view {
+  position: relative; width: 100%; overflow: hidden; background: #101216;
+  border-radius: 8px; touch-action: none; user-select: none;
+}
+#camera-preview { display: block; width: 100%; pointer-events: none; }
+#camera-roi { position: absolute; border: 2px dashed #ffc460; pointer-events: none; box-shadow: 0 0 0 1px #000; }
+#camera-roi.locked { border-style: solid; border-color: #8cffae; }
+.receive-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+#receive-unit, #receive-text {
+  display: block; width: 100%; margin-bottom: 8px; padding: 8px;
+  font: inherit; color: inherit; background: #101216; border: 1px solid #525b6a; border-radius: 8px;
+}
 .stop-bar { position: fixed; inset: auto 0 0; background: #101216; padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid #343943; }
 .stop { display: block; width: 100%; max-width: 828px; margin: auto; min-height: 54px; }
 #stage { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; border-radius: 0; padding: 0; display: flex; flex-direction: column; background: black; z-index: 2; }

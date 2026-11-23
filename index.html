@@ -8,8 +8,8 @@
   <link rel="manifest" href="./manifest.json">
   <link rel="icon" href="./icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="./icon-192.png">
-  <link rel="stylesheet" href="./style.css">
-  <script type="module" src="./app.js"></script>
+  <link rel="stylesheet" href="./style.css?v=2">
+  <script type="module" src="./app.js?v=2"></script>
 </head>
 <body>
   <main id="panel">
@@ -64,6 +64,35 @@
         <input id="unit" type="range" min="150" max="500" step="10" value="200">
         <label class="check"><input id="loop" type="checkbox"> 無限循環發送</label>
         <button id="send" class="primary" disabled>用手電筒發送</button>
+      </section>
+      <section class="morse" aria-labelledby="receive-title">
+        <h2 id="receive-title">接收光學摩斯碼</h2>
+        <p class="hint">開啟後鏡頭，框住光源並鎖定。光源已在閃爍時可直接取樣校準，也可分別校準亮燈和熄燈。</p>
+        <button id="receive-open" class="primary">開啟接收鏡頭</button>
+        <p id="receive-status" class="hint" role="status">鏡頭未開啟</p>
+        <div id="receive-controls" hidden>
+          <div id="camera-view">
+            <video id="camera-preview" autoplay muted playsinline></video>
+            <div id="camera-roi" aria-hidden="true"></div>
+          </div>
+          <label for="roi-size">選取框大小</label>
+          <input id="roi-size" type="range" min="4" max="70" value="20">
+          <button id="roi-lock">鎖定範圍</button>
+          <p class="hint">可在預覽上拖曳畫新框，或拖動框內移動位置。</p>
+          <div class="receive-actions">
+            <button id="flash-calibrate" disabled>取樣閃爍校準</button>
+            <button id="dark-calibrate" disabled>校準熄燈</button>
+            <button id="light-calibrate" disabled>校準亮燈</button>
+          </div>
+          <p id="receive-signal" class="hint"></p>
+          <label for="receive-unit">發送端時間單位（ms）</label>
+          <input id="receive-unit" type="number" min="150" max="2000" step="10" value="200">
+          <button id="receive-run" class="primary" disabled>開始解析</button>
+        </div>
+        <p id="receive-symbols" class="hint"></p>
+        <label for="receive-text">解碼結果</label>
+        <textarea id="receive-text" rows="3" readonly></textarea>
+        <button id="receive-clear">清除結果</button>
       </section>
     </div>
     <footer id="install">iPhone 可從 Safari 的分享選單選擇「加入主畫面」。</footer>

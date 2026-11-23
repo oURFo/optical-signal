@@ -1,5 +1,5 @@
-const version = 'optical-signal-v1';
-const assets = ['./', './index.html', './style.css', './app.js', './morse.mjs', './manifest.json', './icon.svg', './icon-192.png', './icon-512.png'];
+const version = 'optical-signal-v2';
+const assets = ['./', './index.html', './style.css?v=2', './app.js?v=2', './morse.mjs', './receiver.mjs', './decoder.mjs', './manifest.json', './icon.svg', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(version).then(cache => cache.addAll(assets)));

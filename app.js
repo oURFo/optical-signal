@@ -1,4 +1,5 @@
 import { cleanMessage, encode, schedule } from './morse.mjs';
+import { setupReceiver } from './receiver.mjs';
 
 const $ = id => document.getElementById(id);
 const panel = $('panel');
@@ -227,4 +228,5 @@ document.addEventListener('fullscreenchange', () => {
 document.addEventListener('keydown', event => { if (event.key === 'Escape' && active) stop(); });
 renderColors();
 renderMorse();
+setupReceiver({ begin, stop, isActive: run => active === run });
 if ('serviceWorker' in navigator) void navigator.serviceWorker.register('./sw.js').catch(() => {});
