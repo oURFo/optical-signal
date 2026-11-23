@@ -8,8 +8,8 @@
   <link rel="manifest" href="./manifest.json">
   <link rel="icon" href="./icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="./icon-192.png">
-  <link rel="stylesheet" href="./style.css?v=5">
-  <script type="module" src="./app.js?v=6"></script>
+  <link rel="stylesheet" href="./style.css?v=7">
+  <script type="module" src="./app.js?v=7"></script>
 </head>
 <body>
   <main id="panel">
@@ -65,8 +65,8 @@
         <label class="check"><input id="loop" type="checkbox"> 無限循環發送</label>
         <button id="send" class="primary" disabled>用手電筒發送</button>
       </section>
-      <section class="morse" aria-labelledby="receive-title">
-        <h2 id="receive-title">接收光學摩斯碼</h2>
+      <details class="morse" id="receive-details">
+        <summary id="receive-title">接收光學摩斯碼 (實驗)</summary>
         <p class="hint">點一下預覽中的光源即可開始解析。用雙指縮放選取框，再放開繼續接收。</p>
         <button id="receive-open" class="primary">開啟接收鏡頭</button>
         <p id="receive-status" class="hint" role="status">鏡頭未開啟</p>
@@ -80,7 +80,7 @@
           <p id="receive-symbols" class="hint"></p>
           <button id="receive-clear">清除結果</button>
         </div>
-      </section>
+      </details>
     </div>
     <footer id="install">iPhone 可從 Safari 的分享選單選擇「加入主畫面」。</footer>
     <div class="stop-bar"><button id="stop" class="stop">■　全部停止</button></div>

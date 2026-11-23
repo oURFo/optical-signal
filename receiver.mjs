@@ -6,6 +6,7 @@ const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
 export function setupReceiver({ begin, stop, isActive }) {
   const $ = id => document.getElementById(id);
   const open = $('receive-open');
+  const details = $('receive-details');
   const panel = $('receive-controls');
   const status = $('receive-status');
   const video = $('camera-preview');
@@ -23,6 +24,9 @@ export function setupReceiver({ begin, stop, isActive }) {
   let detectedUnit;
   let lastFrame, frameInterval, lastReport, lastVideoTime;
   const nativeFrames = typeof video.requestVideoFrameCallback === 'function';
+  details.addEventListener('toggle', () => {
+    if (!details.open && session && isActive(session)) stop('接收鏡頭已關閉');
+  });
 
   function drawBox() {
     for (const [property, value] of Object.entries({ left: roi.x, top: roi.y, width: roi.w, height: roi.h })) {
